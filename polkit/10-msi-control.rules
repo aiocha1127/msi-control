@@ -1,0 +1,16 @@
+// MSI Control - usunięcie okienka hasła dla msi-control-helper.
+//
+// pkexec wywołuje akcję org.freedesktop.policykit.exec dla dokładnej
+// ścieżki programu. Ta reguła pozwala każdemu użytkownikowi z grupy
+// "wheel" odpalić HELPER bez podawania hasła.
+//
+// Bezpieczeństwo: helper przyjmuje wyłącznie whitelistowane akcje
+// (shift/fan/battery/cooler boost/GPU), nie ma w nim surowych komend.
+
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        subject.isInGroup("wheel") &&
+        action.lookup("program") == "/usr/local/bin/msi-control-helper") {
+        return polkit.Result.YES;
+    }
+});

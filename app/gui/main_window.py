@@ -239,6 +239,8 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
+        self._load_saved_settings()
+
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._periodic_refresh)
         self.refresh_timer.start(1000)
@@ -405,6 +407,7 @@ class MainWindow(QMainWindow):
 
     def _rebuild_ui(self) -> None:
         self._build_ui()
+        self._load_saved_settings()
         self.refresh_all()
 
     def _on_language_changed(self, index: int) -> None:
@@ -880,6 +883,60 @@ class MainWindow(QMainWindow):
         self._refresh_battery()
         self._refresh_monitoring()
 
+    def _load_saved_settings(self) -> None:
+        """
+        Wczytuje zapisane ustawienia (config.json) do widgetów, żeby:
+        1. zmiana języka nie gubiła ich,
+        2. "Zapisz teraz" bez dotykania RGB nie nadpisywało zapisanego
+           efektu pustym stanem (startowy pending jest pusty).
+        """
+        cfg = settings_load()
+
+        rgb = cfg.get("rgb") or {}
+        mode = rgb.get("mode")
+        if mode and hasattr(self, "rgb_speed_spin"):
+            color = tuple(rgb.get("color") or (255, 255, 255))
+            self.rgb_current_color = color
+            colors = [
+                tuple(c) for c in (rgb.get("colors") or [color])
+                if isinstance(c, (list, tuple)) and len(c) == 3
+            ]
+
+            if mode == "wave" and colors:
+                speed = int(rgb.get("speed_cs", 900))
+                self._set_rgb_pending("Fala tęcza ({speed} cs)", speed=speed)
+                self.rgb_status_label.setText(self._rgb_pending_display)
+            elif mode == "cycle" and colors:
+                speed = int(rgb.get("speed_cs", 900))
+                self._set_rgb_pending("Cykl tęcza ({speed} cs)", speed=speed)
+                self.rgb_status_label.setText(self._rgb_pending_display)
+            elif mode == "breathe":
+                r, g, b = color
+                self._set_rgb_pending(
+                    "oddychanie rgb({r},{g},{b})", r=r, g=g, b=b
+                )
+                self.rgb_status_label.setText(self._rgb_pending_display)
+            elif mode == "off":
+                self._set_rgb_pending("off")
+                self.rgb_status_label.setText(self._rgb_pending_display)
+            elif mode == "steady":
+                if hasattr(self, "rgb_target_combo"):
+                    zone = int(rgb.get("zone", 0) or 0)
+                    if 0 <= zone < self.rgb_target_combo.count():
+                        self.rgb_target_combo.setCurrentIndex(zone)
+                self._set_rgb_pending(
+                    f"rgb({color[0]},{color[1]},{color[2]})"
+                )
+                self.rgb_status_label.setText(self._rgb_pending_display)
+
+        if hasattr(self, "autopilot_check"):
+            self.autopilot_check.setChecked(bool(cfg.get("autopilot_enabled")))
+        if hasattr(self, "autopilot_threshold"):
+            threshold = int(cfg.get("autopilot_threshold", 82))
+            self.autopilot_threshold.setValue(threshold)
+        if hasattr(self, "autostart_check"):
+            self.autostart_check.setChecked(bool(cfg.get("autostart")))
+
     def _periodic_refresh(self) -> None:
         """
         Refresh wołany co sekundę przez timer. CELOWO pomija baterię:
@@ -1216,7 +1273,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, "autopilot_threshold"):
             cfg["autopilot_threshold"] = self.autopilot_threshold.value()
 
-        cfg["rgb"] = self._collect_rgb_state()
+        if hasattr(self, "rgb_speed_spin"):
+            if self._rgb_pending_label.strip():
+                cfg["rgb"] = self._collect_rgb_state()
+            else:
+                prev = cfg.get("rgb") or {}
+                if isinstance(prev, dict):
+                    cfg["rgb"] = prev
         cfg["autostart"] = (
             self.autostart_check.isChecked()
             if hasattr(self, "autostart_check")

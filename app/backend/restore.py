@@ -100,13 +100,21 @@ def restore() -> list[tuple[str, str]]:
         value = "on" if cfg["cooler_boost"] else "off"
         results.append(("cooler", _run_action("set-cooler-boost", value)))
 
-    if cfg.get("battery_start") is not None:
-        results.append(("batt_start",
-                        _run_action("set-battery-start", str(cfg["battery_start"]))))
-
-    if cfg.get("battery_end") is not None:
-        results.append(("batt_end",
-                        _run_action("set-battery-end", str(cfg["battery_end"]))))
+    battery_start = cfg.get("battery_start")
+    battery_end = cfg.get("battery_end")
+    valid_battery = (
+        isinstance(battery_start, int) and isinstance(battery_end, int)
+        and 0 <= battery_start < battery_end <= 100
+    )
+    if valid_battery:
+        results.append(
+            ("batt_start",
+             _run_action("set-battery-start", str(battery_start)))
+        )
+        results.append(
+            ("batt_end",
+             _run_action("set-battery-end", str(battery_end)))
+        )
 
     if _restore_rgb(cfg):
         results.append(("rgb", tr("ok")))
